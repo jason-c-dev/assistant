@@ -1,0 +1,215 @@
+# Personal Assistant CLI Configuration
+# This is the default configuration template for the assistant
+
+# Default provider (uses Strands built-in model providers)
+default_provider: "auto"  # auto-detect based on env vars, or specify: anthropic, openai, bedrock, ollama
+
+# Model provider configurations (using Strands built-in providers)
+# Default model: Claude 3.7 Latest across all providers
+providers:
+  anthropic:
+    api_key: "${ANTHROPIC_API_KEY}"
+    model_id: "claude-3-7-sonnet-20250219"  # Anthropic API
+    temperature: 0.7
+    max_tokens: 4096
+  
+  openai:  # via LiteLLM
+    api_key: "${OPENAI_API_KEY}"
+    model_id: "gpt-4"
+    temperature: 0.7
+    max_tokens: 4096
+  
+  bedrock:  # Default in Strands
+    region_name: "us-west-2"
+    model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"  # AWS Bedrock
+    temperature: 0.7
+    # Uses boto3 credential chain automatically
+  
+  ollama:  # For local development
+    base_url: "http://localhost:11434"
+    model_id: "llama3.3"
+    temperature: 0.7
+
+# MCP server configurations
+mcp_servers:
+  memory:
+    command: "./memory_server/.venv/bin/python"
+    args: ["./memory_server/mcp_memory_server.py"]
+    env:
+      MEMORY_FILE_PATH: "~/.assistant/memory.json"
+    required: true  # This server is required for the assistant to function
+  
+  # Example of additional MCP servers (for future expansion)
+  # Uncomment and configure as needed
+  # filesystem:
+  #   command: "npx"
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"]
+  #   required: false
+  #
+  # brave_search:
+  #   command: "npx" 
+  #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+  #   env:
+  #     BRAVE_API_KEY: "${BRAVE_API_KEY}"
+  #   required: false
+
+# System prompt for effective memory integration
+system_prompt: |
+  You are a helpful personal assistant with persistent memory capabilities. Follow these guidelines:
+  
+  1. **User Identification**: Assume you're interacting with the default user. If you haven't identified them, proactively try to do so.
+  
+  2. **Memory Retrieval**: Always begin interactions by saying "Remembering..." and retrieve relevant information from your knowledge graph.
+  
+  3. **Memory Categories**: Pay attention to new information in these categories:
+     - Basic Identity (age, gender, location, job, education, etc.)
+     - Behaviors (interests, habits, preferences, etc.) 
+     - Goals (targets, aspirations, projects, etc.)
+     - Relationships (personal and professional up to 3 degrees)
+     - Important Events (meetings, deadlines, milestones, etc.)
+  
+  4. **Memory Updates**: After each interaction, update your memory by:
+     - Creating entities for recurring people, organizations, and significant events
+     - Connecting them with appropriate relations
+     - Storing relevant facts as observations
+  
+  5. **Conversation Style**: Be conversational, helpful, and reference past interactions when relevant.
+
+# CLI settings  
+cli:
+  verbose: false
+  log_level: "INFO"
+  output_format: "text"  # text, json, markdown
+  
+# Memory settings
+memory:
+  file_path: "~/.assistant/memory.json"
+  backup_enabled: true
+  backup_frequency: "daily"  # daily, weekly, never
+  max_memory_size_mb: 100 
+
+# =============================================================================
+# ADDITIONAL MCP SERVERS EXAMPLES
+# =============================================================================
+# The following are examples of additional MCP servers that can be integrated
+# with the personal assistant. These are not implemented in v1.0 but show
+# how the architecture can be extended.
+#
+# To use these servers:
+# 1. Uncomment the desired server configuration below
+# 2. Install the required dependencies (usually via npm for official MCP servers)
+# 3. Set any required environment variables
+# 4. Restart the assistant
+#
+# Available official MCP servers: https://github.com/modelcontextprotocol/servers
+# =============================================================================
+
+# Example MCP server configurations (DOCUMENTATION ONLY - NOT IMPLEMENTED):
+
+# Filesystem access server - provides file reading/writing capabilities
+# mcp_servers:
+#   filesystem:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path/to/files"]
+#     env: {}
+#     required: false
+#   
+#   # Setup instructions:
+#   # 1. Choose an allowed directory path (e.g., ~/Documents/assistant-files)
+#   # 2. Ensure the directory exists and has appropriate permissions
+#   # 3. The assistant will be able to read/write files in this directory
+#   # 4. Example usage: "Create a todo list file" or "Read my notes.txt file"
+
+# Web search server using Brave Search API
+# mcp_servers:
+#   brave_search:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-brave-search"]
+#     env:
+#       BRAVE_API_KEY: "${BRAVE_API_KEY}"
+#     required: false
+#   
+#   # Setup instructions:
+#   # 1. Get a Brave Search API key from https://api.search.brave.com/
+#   # 2. Set the environment variable: export BRAVE_API_KEY="your-api-key"
+#   # 3. The assistant will be able to search the web for current information
+#   # 4. Example usage: "Search for the latest Python 3.12 features"
+
+# SQLite database server - provides database query capabilities
+# mcp_servers:
+#   sqlite:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-sqlite", "/path/to/database.db"]
+#     env: {}
+#     required: false
+#   
+#   # Setup instructions:
+#   # 1. Provide path to an existing SQLite database file
+#   # 2. Ensure the database file has appropriate read/write permissions
+#   # 3. The assistant will be able to query and modify the database
+#   # 4. Example usage: "Show me all users in the database" or "Add a new record"
+
+# GitHub repository server - provides GitHub API access
+# mcp_servers:
+#   github:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-github"]
+#     env:
+#       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+#     required: false
+#   
+#   # Setup instructions:
+#   # 1. Create a GitHub Personal Access Token with appropriate scopes
+#   # 2. Set the environment variable: export GITHUB_PERSONAL_ACCESS_TOKEN="your-token"
+#   # 3. The assistant will be able to interact with GitHub repositories
+#   # 4. Example usage: "Show me my recent GitHub activity" or "Create an issue"
+
+# Slack integration server - provides Slack API access
+# mcp_servers:
+#   slack:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-slack"]
+#     env:
+#       SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+#     required: false
+#   
+#   # Setup instructions:
+#   # 1. Create a Slack app and get a bot token
+#   # 2. Set the environment variable: export SLACK_BOT_TOKEN="xoxb-your-token"
+#   # 3. The assistant will be able to read/send Slack messages
+#   # 4. Example usage: "Check my Slack messages" or "Send a message to the team"
+
+# Google Drive server - provides Google Drive access
+# mcp_servers:
+#   gdrive:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-gdrive"]
+#     env:
+#       GDRIVE_CREDENTIALS_PATH: "${GDRIVE_CREDENTIALS_PATH}"
+#     required: false
+#   
+#   # Setup instructions:
+#   # 1. Set up Google Drive API credentials (JSON file)
+#   # 2. Set the environment variable to point to credentials file
+#   # 3. The assistant will be able to access Google Drive files
+#   # 4. Example usage: "List my Google Drive files" or "Create a new document"
+
+# =============================================================================
+# CUSTOM MCP SERVERS
+# =============================================================================
+# You can also create custom MCP servers for specific use cases:
+#
+# Example custom server configuration:
+# mcp_servers:
+#   custom_server:
+#     command: "python"
+#     args: ["/path/to/your/custom_mcp_server.py"]
+#     env:
+#       CUSTOM_CONFIG: "value"
+#     required: false
+#
+# For creating custom MCP servers, see:
+# - MCP specification: https://spec.modelcontextprotocol.io/
+# - Python MCP SDK: https://github.com/modelcontextprotocol/python-sdk
+# - Example implementations: https://github.com/modelcontextprotocol/servers
+# ============================================================================= 

@@ -1,0 +1,26 @@
+# Core Strands Agent SDK dependencies
+strands-agents>=0.1.0
+strands-agents-tools>=0.1.0
+
+# CLI framework
+click>=8.0.0
+
+# Configuration management
+pyyaml>=6.0
+
+# MCP (Model Context Protocol) dependencies
+# Note: These may be included with Strands SDK, but listed for clarity
+mcp>=1.0.0
+
+# Additional utility dependencies
+python-dotenv>=1.0.0
+colorama>=0.4.6
+typing-extensions>=4.8.0
+
+# Development and testing dependencies (optional in production)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0 
