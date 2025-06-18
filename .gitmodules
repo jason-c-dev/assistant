@@ -1,0 +1,3 @@
+[submodule "memory_server"]
+	path = memory_server
+	url = https://github.com/jason-c-dev/memory-mcp-server-py.git
