@@ -158,3 +158,8 @@ config.local.yaml
 # Log files
 *.log
 logs/ 
+
+.cursor/rules/
+tasks/
+design/
+tests/
