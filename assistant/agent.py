@@ -175,11 +175,13 @@ class AssistantAgent:
                     tool_name = tool.get('name', 'unknown')
                     logger.debug(f"Available tool: {tool_name}")
             
-            # Create Strands Agent
+            # Create Strands Agent with suppressed callback handler to prevent duplicate output
+            # Setting callback_handler=None uses null_callback_handler which suppresses streaming output
             self.agent = Agent(
                 model=self.model,
                 tools=tools,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                callback_handler=None  # Suppress streaming output to prevent duplication
             )
             
             logger.info("Strands Agent created successfully")
@@ -359,16 +361,48 @@ class AssistantAgent:
             except Exception as e:
                 logger.debug(f"Provider connectivity check failed: {e}")
             
-            # Execute agent - this may be sync or async depending on Strands implementation
-            if hasattr(self.agent, 'run_async'):
-                response = await self.agent.run_async(query)
-            elif hasattr(self.agent, 'arun'):
-                response = await self.agent.arun(query)
+            # Execute agent using stream_async within MCP client context manager
+            # This ensures MCP tools can be called during agent execution
+            response_parts = []
+            
+            # Check if we have an MCP client that needs context management
+            if hasattr(self, 'memory_client') and hasattr(self.memory_client, 'mcp_client') and self.memory_client.mcp_client:
+                # Use MCP client context manager for agent execution
+                def execute_with_context():
+                    with self.memory_client.mcp_client as mcp_client:
+                        # Create a new event loop for the sync context
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            async def stream_agent():
+                                async for event in self.agent.stream_async(query):
+                                    if isinstance(event, dict) and "data" in event:
+                                        response_parts.append(event["data"])
+                                    elif isinstance(event, str):
+                                        response_parts.append(event)
+                            
+                            loop.run_until_complete(stream_agent())
+                        finally:
+                            loop.close()
+                
+                # Run in thread to avoid blocking
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(execute_with_context)
+                    future.result()  # Wait for completion
             else:
-                # Fallback to sync method in async context
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None, self.agent.run, query
-                )
+                # Fallback: execute without MCP context (no MCP tools will work)
+                async for event in self.agent.stream_async(query):
+                    if isinstance(event, dict) and "data" in event:
+                        response_parts.append(event["data"])
+                    elif isinstance(event, str):
+                        response_parts.append(event)
+            
+            response = "".join(response_parts).strip()
+            
+            if not response:
+                response = "I apologize, but I wasn't able to generate a response to your query."
             
             if self.verbose:
                 logger.info(f"Agent response received (length: {len(response)} chars)")

@@ -90,20 +90,9 @@ def format_response(response: str, output_format: str = "text") -> str:
     else:  # text format (default)
         return response
 
-# Memory management command group
-@click.group(invoke_without_command=True)
-@click.pass_context
-def memory_commands(ctx):
-    """Memory management commands."""
-    if ctx.invoked_subcommand is None:
-        click.echo("Available memory commands: export, import, reset, stats")
-
-@memory_commands.command("export")
-@click.option("--output", "-o", help="Output file path for memory export")
-@click.option("--config", "-c", help="Path to configuration file")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-def export_memory(output: Optional[str], config: Optional[str], verbose: bool):
-    """Export memory data to JSON file."""
+# Helper functions for memory operations (used by main command flags)
+def handle_export_memory(output: Optional[str], config: Optional[str], verbose: bool):
+    """Handle memory export operation."""
     try:
         setup_logging(verbose)
         
@@ -127,13 +116,8 @@ def export_memory(output: Optional[str], config: Optional[str], verbose: bool):
         click.echo(f"❌ Unexpected error: {e}", err=True)
         sys.exit(1)
 
-@memory_commands.command("import")
-@click.argument("import_file", type=click.Path(exists=True))
-@click.option("--config", "-c", help="Path to configuration file")
-@click.option("--no-backup", is_flag=True, help="Skip backing up existing memory")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-def import_memory(import_file: str, config: Optional[str], no_backup: bool, verbose: bool):
-    """Import memory data from JSON file."""
+def handle_import_memory(import_file: str, config: Optional[str], verbose: bool):
+    """Handle memory import operation."""
     try:
         setup_logging(verbose)
         
@@ -146,7 +130,7 @@ def import_memory(import_file: str, config: Optional[str], no_backup: bool, verb
         
         # Create memory client and import
         memory_client = MemoryClient(memory_config)
-        memory_client.import_memory(import_file, backup=not no_backup)
+        memory_client.import_memory(import_file, backup=True)
         
         click.echo(f"✅ Memory imported successfully from: {import_file}")
         
@@ -157,20 +141,15 @@ def import_memory(import_file: str, config: Optional[str], no_backup: bool, verb
         click.echo(f"❌ Unexpected error: {e}", err=True)
         sys.exit(1)
 
-@memory_commands.command("reset")
-@click.option("--config", "-c", help="Path to configuration file")
-@click.option("--yes", is_flag=True, help="Confirm memory reset without prompting")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-def reset_memory(config: Optional[str], yes: bool, verbose: bool):
-    """Reset (clear) all stored memory."""
+def handle_reset_memory(config: Optional[str], verbose: bool):
+    """Handle memory reset operation."""
     try:
         setup_logging(verbose)
         
         # Confirmation prompt
-        if not yes:
-            if not click.confirm("⚠️  This will permanently delete all stored memory. Continue?"):
-                click.echo("Memory reset cancelled.")
-                return
+        if not click.confirm("⚠️  This will permanently delete all stored memory. Continue?"):
+            click.echo("Memory reset cancelled.")
+            return
         
         # Load configuration
         config_manager = ConfigManager(config)
@@ -192,11 +171,8 @@ def reset_memory(config: Optional[str], yes: bool, verbose: bool):
         click.echo(f"❌ Unexpected error: {e}", err=True)
         sys.exit(1)
 
-@memory_commands.command("stats")
-@click.option("--config", "-c", help="Path to configuration file")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-def memory_stats(config: Optional[str], verbose: bool):
-    """Show memory statistics and information."""
+def handle_memory_stats(config: Optional[str], verbose: bool):
+    """Handle memory statistics operation."""
     try:
         setup_logging(verbose)
         
@@ -207,34 +183,54 @@ def memory_stats(config: Optional[str], verbose: bool):
         # Get memory server config
         memory_config = config_manager.get_mcp_server_config("memory")
         
-        # Create memory client and get stats
+        # Create memory client and get basic info
         memory_client = MemoryClient(memory_config)
-        stats = memory_client.get_memory_stats()
-        validation = memory_client.validate_memory_file()
         
-        # Display stats
+        # Get memory file path from config
+        memory_file_path = memory_config.get('env', {}).get('MEMORY_FILE_PATH', '~/.assistant/memory.json')
+        memory_file_path = os.path.expanduser(memory_file_path)
+        
+        # Display basic stats
         click.echo("📊 Memory Statistics:")
-        click.echo(f"   File Path: {stats['memory_file_path']}")
-        click.echo(f"   Exists: {'✅' if stats['exists'] else '❌'} {stats['exists']}")
-        click.echo(f"   Size: {stats['size_mb']} MB ({stats['size_bytes']} bytes)")
-        click.echo(f"   Entries: {stats['entry_count']}")
-        if stats['last_modified']:
-            click.echo(f"   Last Modified: {stats['last_modified']}")
+        click.echo(f"   File Path: {memory_file_path}")
         
-        # Display validation
-        click.echo(f"\n🔍 File Validation:")
-        click.echo(f"   Valid: {'✅' if validation['valid'] else '❌'} {validation['valid']}")
-        click.echo(f"   Format: {validation['format']}")
+        if os.path.exists(memory_file_path):
+            stat_info = os.stat(memory_file_path)
+            size_bytes = stat_info.st_size
+            size_mb = round(size_bytes / (1024 * 1024), 2)
+            
+            click.echo(f"   Exists: ✅ Yes")
+            click.echo(f"   Size: {size_mb} MB ({size_bytes} bytes)")
+            
+            # Try to load and count entries
+            try:
+                import json
+                with open(memory_file_path, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        entry_count = len(data.get('entities', [])) + len(data.get('observations', []))
+                        click.echo(f"   Entities: {len(data.get('entities', []))}")
+                        click.echo(f"   Observations: {len(data.get('observations', []))}")
+                        click.echo(f"   Total Entries: {entry_count}")
+            except Exception as e:
+                click.echo(f"   Entries: Unable to count (file may be corrupted)")
+                
+            import datetime
+            mod_time = datetime.datetime.fromtimestamp(stat_info.st_mtime)
+            click.echo(f"   Last Modified: {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        else:
+            click.echo(f"   Exists: ❌ No")
+            click.echo(f"   Note: Memory file will be created on first use")
         
-        if validation['errors']:
-            click.echo("   Errors:")
-            for error in validation['errors']:
-                click.echo(f"     • {error}")
+        # Show MCP server status
+        click.echo(f"\n🔧 MCP Server Configuration:")
+        click.echo(f"   Command: {memory_config.get('command', 'Not configured')}")
+        click.echo(f"   Required: {'✅ Yes' if memory_config.get('required', False) else '❌ No'}")
         
-        if validation['warnings']:
-            click.echo("   Warnings:")
-            for warning in validation['warnings']:
-                click.echo(f"     • {warning}")
+        if memory_client.is_fallback_mode():
+            click.echo(f"   Status: ⚠️  Running in fallback mode (limited functionality)")
+        else:
+            click.echo(f"   Status: ✅ MCP server integration active")
         
     except (ConfigError, MemoryClientError, CLIError) as e:
         click.echo(f"❌ Error getting memory stats: {e}", err=True)
@@ -312,28 +308,24 @@ def main(
         # Handle memory management commands with error context
         if reset_memory:
             with error_context(error_reporter, "resetting memory", raise_on_error=False):
-                ctx = click.Context(reset_memory)
-                ctx.invoke(reset_memory, config=config, yes=False, verbose=verbose)
+                handle_reset_memory(config=config, verbose=verbose)
                 return
         
         if export_memory:
             with error_context(error_reporter, "exporting memory", raise_on_error=False):
-                ctx = click.Context(export_memory)
-                ctx.invoke(export_memory, output=export_memory, config=config, verbose=verbose)
+                handle_export_memory(output=export_memory, config=config, verbose=verbose)
                 return
         
         if import_memory:
             with error_context(error_reporter, "importing memory", raise_on_error=False):
                 if not os.path.exists(import_memory):
                     raise CLIError(f"Import file does not exist: {import_memory}")
-                ctx = click.Context(import_memory)
-                ctx.invoke(import_memory, import_file=import_memory, config=config, no_backup=False, verbose=verbose)
+                handle_import_memory(import_file=import_memory, config=config, verbose=verbose)
                 return
         
         if memory_stats:
             with error_context(error_reporter, "retrieving memory statistics", raise_on_error=False):
-                ctx = click.Context(memory_stats)
-                ctx.invoke(memory_stats, config=config, verbose=verbose)
+                handle_memory_stats(config=config, verbose=verbose)
                 return
         
         # Load configuration with error context
@@ -379,7 +371,7 @@ def main(
         
         # Initialize and process query with AI agent
         with error_context(error_reporter, "processing your query"):
-            from assistant.agent import create_agent, AgentError
+            from assistant.agent import create_agent
             
             if verbose:
                 click.echo(f"🚀 Initializing Personal Assistant Agent with {selected_provider} provider...")
@@ -396,11 +388,10 @@ def main(
             
             # Show processing information in verbose mode
             if verbose:
-                click.echo(f"\n✅ Query processed in {metadata['processing_time']}s", err=True)
-                click.echo(f"🔧 Provider: {metadata['provider']}", err=True)
+                click.echo(f"\n✅ Query processed successfully", err=True)
+                click.echo(f"🔧 Provider: {selected_provider}", err=True)
                 if metadata.get('memory_updated'):
                     click.echo("💾 Memory updated with new information", err=True)
-                click.echo(f"🔄 Memory operations: {', '.join(metadata['memory_operations'])}", err=True)
             
             # Format and display response
             formatted_response = format_response(response, output_format)
@@ -426,8 +417,8 @@ def main(
         
         sys.exit(1)
 
-# Add memory commands as a subgroup (for future extension)
-main.add_command(memory_commands, name="memory")
+# Create alias for backwards compatibility with tests and entry points
+cli = main
 
 if __name__ == "__main__":
     main() 

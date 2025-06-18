@@ -296,16 +296,10 @@ class MemoryClient:
             True if connection test succeeds, False otherwise.
         """
         try:
-            # Use asyncio.wait_for to implement timeout
-            async def test_connection():
-                async with client as test_client:
-                    await test_client.list_tools()
-                    return True
-            
-            # Run the test with timeout
-            result = asyncio.wait_for(test_connection(), timeout=timeout)
-            asyncio.run(result)
-            return True
+            # Use sync context manager as required by Strands MCPClient
+            with client as test_client:
+                tools = test_client.list_tools_sync()
+                return len(tools) >= 0
             
         except asyncio.TimeoutError:
             logger.warning(f"Client connection test timed out after {timeout} seconds")
@@ -361,11 +355,19 @@ class MemoryClient:
             raise MemoryClientError("MCP client not created. Call create_mcp_client() first.")
         
         try:
-            # Use async context manager for proper lifecycle
-            async with self.mcp_client as client:
-                tools = await client.list_tools()
-                logger.info(f"Retrieved {len(tools)} tools from memory server")
-                return tools
+            # MCPClient only supports sync context manager, so run it in async context
+            def get_tools_sync():
+                with self.mcp_client as client:
+                    return client.list_tools_sync()
+            
+            # Run sync operation in thread to avoid blocking async context
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_tools_sync)
+                tools = future.result()
+            
+            logger.info(f"Retrieved {len(tools)} tools from memory server")
+            return tools
                 
         except Exception as e:
             logger.warning(f"Failed to list tools from MCP server: {e}")
@@ -399,12 +401,9 @@ class MemoryClient:
             raise MemoryClientError("MCP client not created. Call create_mcp_client() first.")
         
         try:
-            # For synchronous access, we use the sync version if available
-            if hasattr(self.mcp_client, 'list_tools_sync'):
-                tools = self.mcp_client.list_tools_sync()
-            else:
-                # Fallback to running async in a new event loop
-                tools = asyncio.run(self.list_tools_async())
+            # Use sync context manager as required by Strands MCPClient
+            with self.mcp_client as client:
+                tools = client.list_tools_sync()
             
             self._tools_cache = tools
             logger.info(f"Retrieved {len(tools)} tools from memory server (sync)")

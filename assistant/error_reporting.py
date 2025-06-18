@@ -64,10 +64,12 @@ class ErrorReporter:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        # Setup loggers
-        self.logger = self._setup_logger()
+        # Setup log files before logger (logger needs session_log_file)
         self.error_log_file = self.log_dir / "errors.log"
         self.session_log_file = self.log_dir / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        
+        # Setup loggers
+        self.logger = self._setup_logger()
         
         # Error statistics
         self.error_counts = {}

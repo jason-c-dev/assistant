@@ -20,7 +20,9 @@ except ImportError:
 
 # Import Strands model providers
 try:
-    from strands.models import BedrockModel, AnthropicModel, OllamaModel
+    from strands.models import BedrockModel
+    from strands.models.anthropic import AnthropicModel
+    from strands.models.ollama import OllamaModel
     from strands.models.litellm import LiteLLMModel
     STRANDS_AVAILABLE = True
 except ImportError:
